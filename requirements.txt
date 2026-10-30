@@ -10,8 +10,10 @@ langchain
 langchain-core
 langchain-community
 langchain-mistralai
+langchain-groq
 langchain-experimental
 langchain-huggingface
+langgraph
 
 transformers
 huggingface-hub
@@ -29,3 +31,4 @@ tqdm
 markdown
 psycopg2-binary
 redis
+cachetools

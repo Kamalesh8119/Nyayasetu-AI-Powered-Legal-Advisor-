@@ -157,7 +157,7 @@ def call_with_retry(question: str, max_retries: int = 5, base_delay: float = 15.
     total_latency = 0.0
     for attempt in range(max_retries):
         start = time.time()
-        response = requests.post(URL, json={"message": question}, timeout=120)
+        response = requests.post(URL, json={"message": question, "user_id": "evaluation"}, timeout=120)
         elapsed = round(time.time() - start, 2)
         total_latency += elapsed
 
@@ -192,7 +192,7 @@ def evaluate():
 
     category_stats = {}
 
-    print("🚀 Starting LexAI Evaluation...\n")
+    print("🚀 Starting NyayaSetu Evaluation...\n")
     print("=" * 70)
 
     for i, case in enumerate(test_cases):

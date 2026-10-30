@@ -12,6 +12,7 @@ services:
       - QDRANT_HOST=qdrant
       - QDRANT_PORT=6333
       - POSTGRES_HOST=postgres    # ← ADD
+      - POSTGRES_PORT=5432
       - POSTGRES_DB=legal_ai      # ← ADD
       - POSTGRES_USER=postgres    # ← ADD
       - POSTGRES_PASSWORD=admin   # ← ADD
@@ -34,6 +35,8 @@ services:
       - "8501:8501"
     depends_on:
       - backend
+    environment:
+      - BACKEND_URL=http://backend:8001
     command: streamlit run ui.py --server.port=8501 --server.address=0.0.0.0
     volumes:
       - .:/app

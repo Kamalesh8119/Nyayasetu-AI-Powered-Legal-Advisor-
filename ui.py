@@ -1,39 +1,52 @@
 import html
+import json
+import os
+import re
+import time
+import uuid
+from datetime import datetime
 import markdown as mdlib
 import streamlit as st
 import requests
 
+BACKEND_URL = os.getenv("BACKEND_URL", "http://localhost:8001")
+# History is per user id; the local app has a single user by default.
+USER_ID = os.getenv("NYAYASETU_USER_ID", "anonymous")
+
 st.set_page_config(
-    page_title="LexAI · Legal Advisor",
+    page_title="NyayaSetu · Legal Advisor",
     page_icon="⚖️",
     layout="centered",
+    initial_sidebar_state="expanded",  # toggled with the ☰ icon; the browser remembers the choice
 )
 
 st.markdown("""
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;1,400&family=Syne:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=Geist:wght@300;400;500;600&family=Geist+Mono:wght@400;500&display=swap');
 
 /* ── CSS Variables ── */
 :root {
-    --bg-base:        #0e0f13;
-    --bg-surface:     #161820;
-    --bg-elevated:    #1e2028;
-    --bg-input:       #1a1c24;
-    --border-subtle:  #2a2d3a;
-    --border-active:  #c9a84c;
-    --accent-gold:    #c9a84c;
-    --accent-gold-dim:#a8893e;
-    --accent-teal:    #2dd4bf;
-    --text-primary:   #f0ede6;
-    --text-secondary: #9a9db0;
-    --text-muted:     #5a5d70;
-    --user-bubble:    #1a1c24;
-    --agent-bubble:   transparent;
+    --bg-base:        #0c0d10;
+    --bg-surface:     #141519;
+    --bg-elevated:    #1b1c21;
+    --border-subtle:  #25262d;
+    --accent-gold:    #d4b062;
+    --accent-gold-dim:#a88a45;
+    --text-primary:   #eeece6;
+    --text-body:      #d9d6ce;
+    --text-secondary: #a3a3ab;
+    --text-muted:     #686872;
     --danger:         #e55757;
-    --font-display:   'Cormorant Garamond', Georgia, serif;
-    --font-body:      'Syne', sans-serif;
-    --font-mono:      'JetBrains Mono', monospace;
+    --font-display:   'Instrument Serif', Georgia, serif;
+    --font-body:      'Geist', system-ui, sans-serif;
+    --font-mono:      'Geist Mono', ui-monospace, monospace;
 }
+
+/* One body font everywhere — except Streamlit's icon glyphs, which need their icon font */
+.stApp, .stApp *:not([data-testid="stIconMaterial"]):not(.material-icons):not(code):not(pre) {
+    font-family: var(--font-body);
+}
+.stApp { -webkit-font-smoothing: antialiased; }
 
 /* ── Reset & Base ── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
@@ -46,143 +59,113 @@ html, body,
     font-family: var(--font-body) !important;
 }
 
-#MainMenu, footer, header { visibility: hidden; }
+#MainMenu, footer, [data-testid="stDecoration"],
+[data-testid="stToolbarActions"], [data-testid="stMainMenu"], [data-testid="stAppDeployButton"] { visibility: hidden; }
+/* Streamlit's "Running… / Stop" indicator: the thinking dots already show progress */
+[data-testid="stStatusWidget"] { display: none !important; }
+/* While an answer is fetched, leftovers from the previous screen (e.g. the landing
+   disclaimer) would linger under the thinking dots; hide them until redrawn */
+[data-testid="stMainBlockContainer"] [data-testid="stElementContainer"][data-stale="true"] { display: none !important; }
+
+/* Sidebar open/close: one ☰ icon in the same top-left spot whether open or closed */
+[data-testid="stExpandSidebarButton"], [data-testid="stSidebarCollapseButton"] { visibility: visible !important; }
+[data-testid="stSidebarCollapseButton"] { display: block !important; opacity: 1 !important; }
+[data-testid="stExpandSidebarButton"],
+[data-testid="stSidebarCollapseButton"] button {
+    width: 38px !important;
+    height: 38px !important;
+    border-radius: 10px !important;
+    background: transparent !important;
+    border: none !important;
+    color: var(--text-secondary) !important;
+    transition: background 0.15s, color 0.15s !important;
+}
+[data-testid="stExpandSidebarButton"]:hover,
+[data-testid="stSidebarCollapseButton"] button:hover {
+    background: var(--bg-elevated) !important;
+    color: var(--text-primary) !important;
+}
+[data-testid="stExpandSidebarButton"] [data-testid="stIconMaterial"],
+[data-testid="stSidebarCollapseButton"] [data-testid="stIconMaterial"] { font-size: 0 !important; }
+[data-testid="stExpandSidebarButton"] [data-testid="stIconMaterial"]::before,
+[data-testid="stSidebarCollapseButton"] [data-testid="stIconMaterial"]::before {
+    content: "menu";
+    font-size: 22px;
+}
+[data-testid="stSidebarHeader"] { justify-content: flex-start !important; padding: 0 !important; }
+[data-testid="stSidebarCollapseButton"] { margin: -15px 0 0 -9px !important; }
+header[data-testid="stHeader"] { background: transparent !important; }
 
 [data-testid="stMainBlockContainer"] {
     max-width: 780px !important;
-    padding: 0 1.25rem 7rem !important;
+    padding: 2.5rem 1.25rem 2rem !important;
     margin: 0 auto !important;
 }
 
-/* ── Decorative top border ── */
-[data-testid="stAppViewContainer"]::before {
-    content: '';
-    display: block;
-    position: fixed;
-    top: 0; left: 0; right: 0;
-    height: 3px;
-    background: linear-gradient(90deg, transparent, var(--accent-gold), var(--accent-teal), var(--accent-gold), transparent);
-    z-index: 9999;
+/* ── Landing (new chat) ── */
+.landing {
+    padding: 11vh 0 1.75rem;
 }
-
-/* ── Header ── */
-.lex-header {
-    text-align: center;
-    padding: 3rem 0 2rem;
-    margin-bottom: 0.25rem;
-    position: relative;
-}
-.lex-header::after {
-    content: '';
-    display: block;
-    width: 60px;
-    height: 1px;
-    background: linear-gradient(90deg, transparent, var(--accent-gold), transparent);
-    margin: 1.25rem auto 0;
-}
-.lex-logo {
-    font-family: var(--font-display);
-    font-size: 2.8rem;
-    font-weight: 600;
-    color: var(--text-primary);
-    letter-spacing: 0.04em;
-    line-height: 1;
-}
-.lex-logo span {
-    color: var(--accent-gold);
-    font-style: italic;
-}
-.lex-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 0.4rem;
-    margin-top: 0.7rem;
-    font-size: 0.7rem;
-    color: var(--text-muted);
+.landing-greeting {
+    font-size: 0.74rem;
     font-weight: 500;
-    letter-spacing: 0.12em;
+    letter-spacing: 0.18em;
     text-transform: uppercase;
-    font-family: var(--font-body);
-}
-.lex-badge::before,
-.lex-badge::after {
-    content: '·';
     color: var(--accent-gold);
-    font-size: 0.85rem;
+    margin-bottom: 0.6rem;
 }
-.lex-scope {
-    display: flex;
-    justify-content: center;
-    flex-wrap: wrap;
-    gap: 0.4rem;
-    margin-top: 0.8rem;
-}
-.scope-chip {
-    background: transparent;
-    border: 1px solid var(--border-subtle);
-    border-radius: 4px;
-    padding: 0.2rem 0.55rem;
-    font-size: 0.65rem;
-    color: var(--text-muted);
-    font-weight: 500;
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-}
-
-/* ── Empty state ── */
-.empty-state {
-    text-align: center;
-    padding: 2.5rem 1rem 1rem;
-}
-.empty-gavel {
-    font-size: 2.8rem;
-    filter: drop-shadow(0 0 16px rgba(201,168,76,0.25));
-    margin-bottom: 1rem;
-}
-.empty-headline {
-    font-family: var(--font-display);
-    font-size: 1.5rem;
-    font-weight: 500;
-    color: var(--text-primary);
-    margin-bottom: 0.4rem;
-}
-.empty-sub {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    line-height: 1.7;
+.landing-title {
+    font-family: var(--font-display) !important;
+    font-size: 2.4rem;
     font-weight: 400;
+    line-height: 1.08;
+    letter-spacing: -0.01em;
+    color: var(--text-primary);
+    margin-bottom: 0.75rem;
+}
+.landing-title em {
+    font-family: var(--font-display) !important;
+    font-style: italic;
+    color: var(--accent-gold);
+}
+.landing-sub {
+    font-size: 0.95rem;
+    font-weight: 300;
+    color: var(--text-secondary);
+    line-height: 1.6;
+}
+.landing-note {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    margin-top: 1.25rem;
 }
 
-/* ── Suggestion pills ── */
-.pill-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 0.7rem;
-    margin: 1.8rem 0 2.5rem;
-}
-
-/* Override Streamlit button inside pill grid */
-div[data-testid="column"] .stButton > button {
+/* Suggestion cards */
+[class*="st-key-pill_"] [data-testid^="stBaseButton"] {
     background: var(--bg-surface) !important;
     border: 1px solid var(--border-subtle) !important;
-    border-radius: 10px !important;
-    padding: 0.85rem 1rem !important;
-    font-size: 0.82rem !important;
-    color: var(--text-primary) !important;
-    font-family: var(--font-body) !important;
-    font-weight: 400 !important;
+    border-radius: 12px !important;
+    padding: 0.9rem 1rem !important;
+    min-height: 3.4rem !important;
+    justify-content: flex-start !important;
+    transition: border-color 0.15s, background 0.15s !important;
+}
+[class*="st-key-pill_"] [data-testid^="stBaseButton"] * {
+    justify-content: flex-start !important;
     text-align: left !important;
-    line-height: 1.45 !important;
-    transition: border-color 0.18s, background 0.18s, color 0.18s !important;
-    width: 100% !important;
-    cursor: pointer !important;
-    letter-spacing: 0.01em !important;
 }
-div[data-testid="column"] .stButton > button:hover {
-    border-color: var(--accent-gold) !important;
-    background: rgba(201,168,76,0.06) !important;
-    color: var(--accent-gold) !important;
+[class*="st-key-pill_"] [data-testid^="stBaseButton"] > div { width: 100% !important; }
+[class*="st-key-pill_"] [data-testid^="stBaseButton"] p {
+    font-family: var(--font-body) !important;
+    font-size: 0.85rem !important;
+    color: var(--text-secondary) !important;
+    text-align: left !important;
 }
+[class*="st-key-pill_"] [data-testid^="stBaseButton"]:hover {
+    border-color: rgba(201,168,76,0.5) !important;
+    background: var(--bg-elevated) !important;
+}
+[class*="st-key-pill_"] [data-testid^="stBaseButton"]:hover p { color: var(--text-primary) !important; }
 
 /* ── Message rows ── */
 .msg-row {
@@ -192,7 +175,6 @@ div[data-testid="column"] .stButton > button:hover {
     margin-bottom: 1.2rem;
     animation: fadeUp 0.22s ease;
 }
-.msg-row.user { flex-direction: row-reverse; }
 
 @keyframes fadeUp {
     from { opacity: 0; transform: translateY(6px); }
@@ -214,37 +196,37 @@ div[data-testid="column"] .stButton > button:hover {
     letter-spacing: 0.04em;
     font-family: var(--font-body);
 }
-.avatar.user {
-    background: linear-gradient(135deg, var(--accent-gold), var(--accent-gold-dim));
-    color: var(--bg-base);
-    font-size: 0.65rem;
-    text-transform: uppercase;
-}
 .avatar.agent {
-    background: var(--bg-elevated);
-    border: 1px solid var(--border-subtle);
-    font-size: 1.05rem;
+    width: 30px;
+    height: 30px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 30% 30%, rgba(212,176,98,0.18), rgba(212,176,98,0.04));
+    border: 1px solid rgba(212,176,98,0.35);
+    color: var(--accent-gold);
+    font-size: 0.85rem;
 }
 
 /* ── Bubbles ── */
 .bubble {
-    max-width: 82%;
-    font-size: 0.92rem;
-    line-height: 1.7;
     word-break: break-word;
 }
+.msg-row.user { justify-content: flex-end; margin: 1.6rem 0 1.4rem; }
+.msg-row.user .bubble { margin-left: auto; }
 .bubble.user {
-    background: var(--bg-surface);
+    max-width: 75%;
+    width: fit-content;
+    background: var(--bg-elevated);
     color: var(--text-primary);
-    border: 1px solid var(--border-subtle);
-    border-radius: 14px 4px 14px 14px;
-    padding: 0.85rem 1.15rem;
-    white-space: pre-wrap;
+    border-radius: 18px 18px 4px 18px;
+    padding: 0.6rem 1.05rem;
+    font-size: 0.95rem;
+    line-height: 1.55;
 }
 .bubble.agent {
-    background: transparent;
-    color: var(--text-primary);
-    border: none;
+    color: var(--text-body);
+    font-size: 0.97rem;
+    font-weight: 400;
+    line-height: 1.75;
     padding: 0.1rem 0;
 }
 
@@ -252,19 +234,19 @@ div[data-testid="column"] .stButton > button:hover {
 .bubble.agent h1,
 .bubble.agent h2,
 .bubble.agent h3 {
-    font-family: var(--font-display);
+    font-family: var(--font-display) !important;
     color: var(--text-primary);
-    font-weight: 500;
-    margin: 1.1rem 0 0.45rem;
-    line-height: 1.25;
+    font-weight: 400;
+    margin: 1.2rem 0 0.4rem;
+    line-height: 1.2;
 }
-.bubble.agent h1 { font-size: 1.5rem; }
-.bubble.agent h2 { font-size: 1.25rem; color: var(--accent-gold); }
-.bubble.agent h3 { font-size: 1.05rem; color: var(--accent-teal); }
-.bubble.agent p  { margin-bottom: 0.7rem; }
+.bubble.agent h1 { font-size: 1.7rem; }
+.bubble.agent h2 { font-size: 1.45rem; }
+.bubble.agent h3 { font-size: 1.25rem; color: var(--accent-gold); }
+.bubble.agent p  { margin-bottom: 0.8rem; }
 .bubble.agent p:last-child { margin-bottom: 0; }
 .bubble.agent strong { color: var(--text-primary); font-weight: 600; }
-.bubble.agent em { color: var(--text-secondary); font-style: italic; }
+.bubble.agent em { color: var(--text-primary); font-style: italic; }
 .bubble.agent hr {
     border: none;
     border-top: 1px solid var(--border-subtle);
@@ -275,7 +257,10 @@ div[data-testid="column"] .stButton > button:hover {
     padding-left: 1.5rem;
     margin-bottom: 0.7rem;
 }
-.bubble.agent li { margin-bottom: 0.35rem; }
+.bubble.agent li { margin-bottom: 0.3rem; }
+.bubble.agent li > p { margin-bottom: 0.25rem; }
+.bubble.agent li > ul, .bubble.agent li > ol { margin: 0.2rem 0 0.6rem; }
+.bubble.agent ol > li::marker { font-weight: 600; }
 .bubble.agent li::marker { color: var(--accent-gold); }
 .bubble.agent code {
     background: var(--bg-elevated);
@@ -283,7 +268,7 @@ div[data-testid="column"] .stButton > button:hover {
     border-radius: 4px;
     padding: 0.12rem 0.4rem;
     font-size: 0.85em;
-    color: var(--accent-teal);
+    color: var(--accent-gold);
     font-family: var(--font-mono);
 }
 .bubble.agent pre {
@@ -308,8 +293,8 @@ div[data-testid="column"] .stButton > button:hover {
     color: var(--text-secondary);
     margin: 0.6rem 0;
     font-style: italic;
-    font-family: var(--font-display);
-    font-size: 1rem;
+    font-family: var(--font-display) !important;
+    font-size: 1.15rem;
 }
 .bubble.agent table {
     border-collapse: collapse;
@@ -323,10 +308,9 @@ div[data-testid="column"] .stButton > button:hover {
     padding: 0.5rem 0.9rem;
     border: 1px solid var(--border-subtle);
     text-align: left;
-    font-weight: 600;
-    font-family: var(--font-body);
-    letter-spacing: 0.05em;
-    font-size: 0.78rem;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    font-size: 0.72rem;
     text-transform: uppercase;
 }
 .bubble.agent td {
@@ -338,14 +322,27 @@ div[data-testid="column"] .stButton > button:hover {
 
 /* ── Section label above agent reply ── */
 .agent-label {
-    font-size: 0.65rem;
-    color: var(--text-muted);
-    font-weight: 600;
-    letter-spacing: 0.1em;
-    text-transform: uppercase;
-    margin-bottom: 0.4rem;
-    font-family: var(--font-body);
+    font-size: 0.8rem;
+    color: var(--text-secondary);
+    font-weight: 500;
+    margin: 0.3rem 0 0.35rem;
 }
+
+/* ── Streaming cursor ── */
+.bubble.agent.streaming > :last-child:not(ul):not(ol):not(table)::after,
+.bubble.agent.streaming > ul:last-child > li:last-child::after,
+.bubble.agent.streaming > ol:last-child > li:last-child::after {
+    content: "";
+    display: inline-block;
+    width: 0.5em;
+    height: 1.05em;
+    margin-left: 3px;
+    vertical-align: text-bottom;
+    border-radius: 2px;
+    background: var(--accent-gold);
+    animation: cursorBlink 1s steps(1) infinite;
+}
+@keyframes cursorBlink { 50% { opacity: 0; } }
 
 /* ── Thinking dots ── */
 .thinking {
@@ -379,42 +376,13 @@ div[data-testid="column"] .stButton > button:hover {
     opacity: 0.5;
 }
 
-/* ── Disclaimer strip ── */
-.disclaimer {
-    display: flex;
-    align-items: flex-start;
-    gap: 0.6rem;
-    background: rgba(201,168,76,0.06);
-    border: 1px solid rgba(201,168,76,0.18);
-    border-radius: 8px;
-    padding: 0.7rem 1rem;
-    margin-bottom: 1.5rem;
-    font-size: 0.75rem;
-    color: var(--text-secondary);
-    line-height: 1.5;
-}
-.disclaimer-icon {
-    font-size: 0.9rem;
-    flex-shrink: 0;
-    margin-top: 1px;
-}
-
 /* ══════════════════════════════════════
    ── INPUT AREA — HIGH CONTRAST FIX ──
    ══════════════════════════════════════ */
 
-/* Fixed bottom bar */
-[data-testid="stChatInput"] {
-    position: fixed !important;
-    bottom: 0 !important;
-    left: 50% !important;
-    transform: translateX(-50%) !important;
-    width: 100% !important;
-    max-width: 780px !important;
-    padding: 0.9rem 1.25rem 1.4rem !important;
+/* Bottom bar: Streamlit pins it to the main column (keeps it aligned with the sidebar open) */
+[data-testid="stBottomBlockContainer"], [data-testid="stBottom"] > div {
     background: var(--bg-base) !important;
-    border-top: 1px solid var(--border-subtle) !important;
-    z-index: 999 !important;
 }
 
 /* Outer wrapper — the rounded box */
@@ -435,8 +403,7 @@ div[data-testid="column"] .stButton > button:hover {
     background-color: #1e2028 !important;
     color: #ffffff !important;                    /* ← full white text */
     caret-color: var(--accent-gold) !important;   /* ← gold cursor */
-    font-family: var(--font-body) !important;
-    font-size: 0.92rem !important;
+    font-size: 0.95rem !important;
     font-weight: 400 !important;
     line-height: 1.6 !important;
     padding: 0.75rem 1rem !important;
@@ -446,8 +413,7 @@ div[data-testid="column"] .stButton > button:hover {
 }
 [data-testid="stChatInput"] textarea::placeholder {
     color: #6b6e85 !important;                    /* ← visible but dim placeholder */
-    font-style: italic !important;
-    font-size: 0.87rem !important;
+        font-size: 0.87rem !important;
 }
 /* Remove any inner box-shadow / outline Streamlit injects */
 [data-testid="stChatInput"] textarea:focus {
@@ -498,6 +464,110 @@ div[data-testid="column"] .stButton > button:hover {
     background: rgba(229,87,87,0.06) !important;
 }
 
+/* ── Sidebar: chat history ── */
+[data-testid="stSidebar"] {
+    background: var(--bg-surface) !important;
+    border-right: 1px solid var(--border-subtle) !important;
+}
+[data-testid="stSidebarContent"] { padding-top: 0.5rem; }
+
+[data-testid="stSidebarUserContent"] { padding: 0 0.9rem 1.5rem !important; }
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] { gap: 0.1rem !important; }
+.stApp .sidebar-brand, .stApp .sidebar-brand * { font-family: var(--font-display) !important; }
+.sidebar-brand {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    margin-top: -1.9rem;
+    padding: 0 0 1rem;
+}
+.sidebar-brand .brand-mark {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 1.35rem;
+    font-style: normal;
+    color: var(--accent-gold);
+    background: radial-gradient(circle at 30% 30%, rgba(212,176,98,0.2), rgba(212,176,98,0.04));
+    border: 1px solid rgba(212,176,98,0.4);
+}
+.sidebar-brand .brand-word {
+    font-size: 2rem;
+    line-height: 1;
+    letter-spacing: 0.01em;
+    color: var(--text-primary);
+}
+.sidebar-brand .brand-ai { color: var(--accent-gold); font-style: italic; }
+.history-heading {
+    font-size: 0.62rem;
+    color: var(--text-muted);
+    font-weight: 600;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    padding: 1.1rem 0.6rem 0.4rem;
+    margin-bottom: 0.3rem;
+}
+.sidebar-footer {
+    font-size: 0.68rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+    border-top: 1px solid var(--border-subtle);
+    margin-top: 1.5rem;
+    padding: 0.9rem 0.6rem 0;
+}
+.history-empty { font-size: 0.78rem; color: var(--text-muted); padding: 0.5rem 0.6rem; }
+[data-testid="stSidebar"] [data-testid^="stBaseButton"] {
+    width: 100% !important;
+    justify-content: flex-start !important;
+    background: transparent !important;
+    color: var(--text-secondary) !important;
+    border: 1px solid transparent !important;
+    border-radius: 8px !important;
+    padding: 0.35rem 0.6rem !important;
+    min-height: 0 !important;
+    font-size: 0.8rem !important;
+}
+[data-testid="stSidebar"] [data-testid^="stBaseButton"] p {
+    text-align: left !important;
+    white-space: nowrap !important;
+    overflow: hidden !important;
+    text-overflow: ellipsis !important;
+    font-size: 0.8rem !important;
+}
+[data-testid="stSidebar"] [data-testid^="stBaseButton"] * {
+    justify-content: flex-start !important;
+    text-align: left !important;
+}
+[data-testid="stSidebar"] [data-testid^="stBaseButton"] > div { width: 100% !important; }
+[data-testid="stSidebar"] [data-testid^="stBaseButton"] > div,
+[data-testid="stSidebar"] [data-testid^="stBaseButton"] [data-testid="stMarkdownContainer"] {
+    min-width: 0 !important;
+    max-width: 100% !important;
+    overflow: hidden !important;
+}
+[data-testid="stSidebar"] .stTooltipIcon,
+[data-testid="stSidebar"] .stTooltipHoverTarget { display: block !important; width: 100% !important; }
+[data-testid="stSidebar"] [data-testid^="stBaseButton"]:hover {
+    border-color: var(--accent-gold) !important;
+    color: var(--accent-gold) !important;
+    background: rgba(201,168,76,0.06) !important;
+}
+.st-key-new_chat { margin-top: 1.1rem !important; }
+.st-key-new_chat [data-testid^="stBaseButton"] {
+    border: 1px solid var(--border-subtle) !important;
+    color: var(--text-primary) !important;
+    padding: 0.5rem 0.75rem !important;
+}
+[data-testid="stSidebar"] [data-testid="stBaseButton-primary"] {
+    background: rgba(201,168,76,0.12) !important;
+    border-color: rgba(201,168,76,0.35) !important;
+    color: var(--text-primary) !important;
+}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
@@ -506,60 +576,173 @@ div[data-testid="column"] .stButton > button:hover {
 </style>
 """, unsafe_allow_html=True)
 
-# ── Header ─────────────────────────────────────────────────────────────────────
-st.markdown("""
-<div class="lex-header">
-    <div class="lex-logo">⚖ Lex<span>AI</span></div>
-    <div class="lex-badge">AI-Powered Legal Advisor</div>
-    <div class="lex-scope">
-        <span class="scope-chip">Constitution</span>
-        <span class="scope-chip">BNS / IPC</span>
-        <span class="scope-chip">CrPC / BNSS</span>
-        <span class="scope-chip">IDA</span>
-        <span class="scope-chip">MVA</span>
-        <span class="scope-chip">Civil Law</span>
-    </div>
-</div>
-""", unsafe_allow_html=True)
-
 # ── Session state ──────────────────────────────────────────────────────────────
 if "messages" not in st.session_state:
     st.session_state.messages = []
 if "pending" not in st.session_state:
     st.session_state.pending = None
+if "session_id" not in st.session_state:
+    st.session_state.session_id = uuid.uuid4().hex
+
+
+def new_chat():
+    st.session_state.messages = []
+    st.session_state.pending = None
+    st.session_state.session_id = uuid.uuid4().hex
+
+
+def open_chat(session_id: str):
+    """Load a previous conversation from the backend into the chat view."""
+    try:
+        res = requests.get(f"{BACKEND_URL}/sessions/{session_id}",
+                           params={"user_id": USER_ID}, timeout=10)
+        res.raise_for_status()
+        rows = res.json()["messages"]
+    except Exception as e:
+        st.sidebar.error(f"Could not load conversation: {e}")
+        return
+    messages = []
+    for row in rows:
+        messages.append({"role": "user", "content": row["query"]})
+        messages.append({"role": "assistant", "content": row["response"]})
+    st.session_state.messages = messages
+    st.session_state.pending = None
+    st.session_state.session_id = session_id
+
+
+def fetch_sessions() -> list:
+    try:
+        res = requests.get(f"{BACKEND_URL}/sessions", params={"user_id": USER_ID}, timeout=5)
+        res.raise_for_status()
+        return res.json()["sessions"]
+    except Exception:
+        return []
+
+
+def day_group(ts: str) -> str:
+    try:
+        day = datetime.fromisoformat(ts).date()
+    except (TypeError, ValueError):
+        return "Earlier"
+    delta = (datetime.now().date() - day).days
+    return "Today" if delta == 0 else "Yesterday" if delta == 1 else "Earlier"
+
+
+def render_sidebar():
+    """Drawn last, so a just-answered question's chat is already in the history
+    without re-running the whole page."""
+    with st.sidebar:
+        st.markdown(
+            '<div class="sidebar-brand"><span class="brand-mark">⚖</span>'
+            '<span class="brand-word">Nyaya<span class="brand-ai">Setu</span></span></div>',
+            unsafe_allow_html=True,
+        )
+        st.button("＋  New chat", key="new_chat", on_click=new_chat, use_container_width=True)
+        sessions = fetch_sessions()
+        if not sessions:
+            st.markdown('<div class="history-heading">Chats</div>'
+                        '<div class="history-empty">No conversations yet.</div>', unsafe_allow_html=True)
+        current_group = None
+        for sess in sessions:
+            group = day_group(sess["updated_at"])
+            if group != current_group:
+                st.markdown(f'<div class="history-heading">{group}</div>', unsafe_allow_html=True)
+                current_group = group
+            title = " ".join(sess["title"].split())
+            st.button(
+                title,
+                key=f"sess_{sess['session_id']}",
+                on_click=open_chat,
+                args=(sess["session_id"],),
+                type="primary" if sess["session_id"] == st.session_state.session_id else "secondary",
+                use_container_width=True,
+            )
+        st.markdown(
+            '<div class="sidebar-footer">Covers the Constitution, BNS, BNSS, CrPC, CPC, Evidence Act, '
+            'Negotiable Instruments Act, Divorce Act and Motor Vehicles Act.</div>',
+            unsafe_allow_html=True,
+        )
+
+
+def submit(query: str):
+    """Show the user's message right away, then fetch the answer on the next run."""
+    clean_query = query.lstrip("📜🏛⚖🔒 ")
+    st.session_state.messages.append({"role": "user", "content": clean_query})
+    st.session_state.pending = clean_query
+    st.rerun()
 
 SUGGESTIONS = [
-    "📜 What is IPC Section 302 (Murder)?",
-    "🏛 Explain Article 21 — Right to Life",
-    "⚖ How to apply for bail in India?",
-    "🔒 Rights of an arrested person",
+    "What replaced IPC Section 302 for murder?",
+    "Explain Article 21, the right to life",
+    "How do I apply for bail?",
+    "What are my rights if I'm arrested?",
 ]
 
-# ── Suggestion pills (empty state) ────────────────────────────────────────────
+
+def greeting() -> str:
+    hour = datetime.now().hour
+    return "Good morning" if hour < 12 else "Good afternoon" if hour < 17 else "Good evening"
+
+
+# ── Landing (new chat) ─────────────────────────────────────────────────────────
 if not st.session_state.messages:
-    st.markdown("""
-    <div class="empty-state">
-        <div class="empty-gavel">⚖️</div>
-        <div class="empty-headline">How can I assist you today?</div>
-        <div class="empty-sub">Ask any question about Indian law — constitutional rights,<br>criminal provisions, civil remedies, and more.</div>
+    st.markdown(f"""
+    <div class="landing">
+        <div class="landing-greeting">{greeting()}</div>
+        <div class="landing-title">Ask anything about <em>Indian law</em> with <em>NyayaSetu</em></div>
+        <div class="landing-sub">Answers grounded in Indian statutes, with the sections cited.</div>
     </div>
     """, unsafe_allow_html=True)
 
-    st.markdown("""
-    <div class="disclaimer">
-        <span class="disclaimer-icon">ℹ️</span>
-        <span>LexAI provides general legal information only. This is not legal advice.
-        For specific legal issues, please consult a qualified advocate.</span>
-    </div>
-    """, unsafe_allow_html=True)
-
-    cols = st.columns(2)
+    cols = st.columns(2, gap="small")
     for i, s in enumerate(SUGGESTIONS):
         if cols[i % 2].button(s, key=f"pill_{i}", use_container_width=True):
-            st.session_state.pending = s
-            st.rerun()
+            submit(s)
+
+    st.markdown(
+        '<div class="landing-note">General legal information, not legal advice. '
+        'For your specific situation, consult a qualified advocate.</div>',
+        unsafe_allow_html=True,
+    )
+
+LIST_ITEM = re.compile(r"^(\s*)([-*+]|\d+[.)])\s+")
+
+
+def normalize_markdown(text: str) -> str:
+    """LLMs indent nested lists by 2-3 spaces and start lists right under a line of
+    text; Python-Markdown needs 4-space nesting and a blank line before a list."""
+    out = []
+    for line in text.replace("\r\n", "\n").split("\n"):
+        m = LIST_ITEM.match(line)
+        if m:
+            indent = len(m.group(1).expandtabs(4))
+            if indent:
+                line = " " * (4 * max(1, round(indent / 2.5))) + line.lstrip()
+            elif out and out[-1].strip() and not LIST_ITEM.match(out[-1]):
+                out.append("")
+        out.append(line)
+    return "\n".join(out)
+
 
 # ── Render chat history ────────────────────────────────────────────────────────
+def agent_html(content: str, streaming: bool = False) -> str:
+    rendered = mdlib.markdown(
+        normalize_markdown(content),
+        extensions=["sane_lists", "tables", "fenced_code"]
+    )
+    state = " streaming" if streaming else ""
+    divider = "" if streaming else '<div class="msg-divider"></div>'
+    return f"""
+    <div class="msg-row agent">
+        <div class="avatar agent">⚖</div>
+        <div style="flex:1; min-width:0;">
+            <div class="agent-label">NyayaSetu</div>
+            <div class="bubble agent{state}">{rendered}</div>
+        </div>
+    </div>
+    {divider}"""
+
+
 def render_messages():
     for msg in st.session_state.messages:
         role    = msg["role"]
@@ -570,82 +753,92 @@ def render_messages():
             st.markdown(f"""
             <div class="msg-row user">
                 <div class="bubble user">{safe_content}</div>
-                <div class="avatar user">You</div>
             </div>""", unsafe_allow_html=True)
         else:
-            rendered = mdlib.markdown(
-                content,
-                extensions=["nl2br", "tables", "fenced_code"]
-            )
-            st.markdown(f"""
-            <div class="msg-row agent">
-                <div class="avatar agent">⚖</div>
-                <div style="flex:1; min-width:0;">
-                    <div class="agent-label">LexAI · Legal Analysis</div>
-                    <div class="bubble agent">{rendered}</div>
-                </div>
-            </div>
-            <div class="msg-divider"></div>""", unsafe_allow_html=True)
+            st.markdown(agent_html(content), unsafe_allow_html=True)
 
 render_messages()
 
 # ── Handle API call ────────────────────────────────────────────────────────────
-def ask(query: str):
-    clean_query = query.lstrip("📜🏛⚖🔒 ")
-
-    st.session_state.messages.append({"role": "user", "content": clean_query})
-
-    thinking_placeholder = st.empty()
-    thinking_placeholder.markdown("""
-    <div class="msg-row agent">
-        <div class="avatar agent">⚖</div>
-        <div style="flex:1;">
-            <div class="agent-label">LexAI · Analysing</div>
-            <div class="thinking">
-                <div class="dot"></div>
-                <div class="dot"></div>
-                <div class="dot"></div>
-            </div>
+THINKING_HTML = """
+<div class="msg-row agent">
+    <div class="avatar agent">⚖</div>
+    <div style="flex:1;">
+        <div class="agent-label">Searching the statutes…</div>
+        <div class="thinking">
+            <div class="dot"></div>
+            <div class="dot"></div>
+            <div class="dot"></div>
         </div>
-    </div>""", unsafe_allow_html=True)
+    </div>
+</div>"""
+
+# The LLM can deliver a whole answer in well under a second; reveal it at a steady
+# typing pace (~500 chars/s), speeding up when far behind so long answers never drag.
+REVEAL_CHARS = 8
+REVEAL_DELAY = 0.015
+MAX_REVEAL_FRAMES = 150
+
+
+def stream_answer(clean_query: str, placeholder) -> str:
+    """Stream the answer from the backend into `placeholder`; return the full text."""
+    buffer, shown = "", 0
+    with requests.post(
+        f"{BACKEND_URL}/chat/stream",
+        json={
+            "message": clean_query,
+            "user_id": USER_ID,
+            "session_id": st.session_state.session_id,
+        },
+        stream=True,
+        timeout=(5, 120),
+    ) as res:
+        if not res.ok:
+            return f"⚠️ **Server error ({res.status_code}).** Please try again."
+        for line in res.iter_lines(decode_unicode=True):
+            if not line:
+                continue
+            event = json.loads(line)
+            if event["type"] == "error":
+                note = f"⚠️ {event.get('detail', 'Something went wrong. Please try again.')}"
+                return f"{buffer}\n\n{note}" if buffer else note
+            if event["type"] != "token":
+                continue
+            buffer += event["text"]
+            while shown < len(buffer):
+                step = max(REVEAL_CHARS, (len(buffer) - shown) // MAX_REVEAL_FRAMES)
+                shown = min(len(buffer), shown + step)
+                placeholder.markdown(agent_html(buffer[:shown], streaming=True), unsafe_allow_html=True)
+                time.sleep(REVEAL_DELAY)
+    return buffer or "Sorry, I could not get a response."
+
+
+def ask(clean_query: str):
+    placeholder = st.empty()
+    placeholder.markdown(THINKING_HTML, unsafe_allow_html=True)
 
     try:
-        res = requests.post(
-            "http://backend:8001/chat",
-            json={"message": clean_query},
-            timeout=120,
-        )
-        answer = res.json().get("response", "Sorry, I could not get a response.")
-
+        answer = stream_answer(clean_query, placeholder)
     except requests.exceptions.ConnectionError:
         answer = "⚠️ **Cannot connect to backend.** Is the server running on port 8001?"
-
+    except requests.exceptions.Timeout:
+        answer = "⚠️ **The server took too long to respond.** Please try again."
     except ValueError:
         answer = "⚠️ **Invalid response from server.** Please try again."
-
     except Exception as e:
         answer = f"⚠️ **Unexpected error:** {str(e)}"
 
-    thinking_placeholder.empty()
-
+    placeholder.markdown(agent_html(answer), unsafe_allow_html=True)
     st.session_state.messages.append({"role": "assistant", "content": answer})
-    st.rerun()
 
-# ── Process pending suggestion ─────────────────────────────────────────────────
+# ── Chat input ─────────────────────────────────────────────────────────────────
+if prompt := st.chat_input("Ask a legal question…"):
+    submit(prompt)
+
+# ── Answer the pending question (its message is already on screen) ─────────────
 if st.session_state.pending:
     query = st.session_state.pending
     st.session_state.pending = None
     ask(query)
 
-# ── Chat input ─────────────────────────────────────────────────────────────────
-if prompt := st.chat_input("Ask a legal question…"):
-    ask(prompt)
-
-# ── Clear button ───────────────────────────────────────────────────────────────
-if st.session_state.messages:
-    st.markdown("<br>", unsafe_allow_html=True)
-    col1, col2, col3 = st.columns([3, 2, 3])
-    with col2:
-        if st.button("🗑 Clear conversation", use_container_width=True):
-            st.session_state.messages = []
-            st.rerun()
+render_sidebar()

@@ -1,11 +1,33 @@
 import json
-from qdrant_client.models import VectorParams, Distance
+import sys
+import uuid
+from qdrant_client.models import (
+    VectorParams, Distance, PointStruct, Filter, FieldCondition, MatchValue
+)
 from langchain_experimental.text_splitter import SemanticChunker
 from langchain_huggingface import HuggingFaceEmbeddings
 
 from app.models.embedding import EmbeddingModel
 from app.services.vector_store import client
 from app.utils.config import COLLECTION_NAME
+
+
+DEFAULT_TITLES = {
+    "bns":  "Bharatiya Nyaya Sanhita",
+    "bnss": "Bharatiya Nagarik Suraksha Sanhita",
+}
+
+FILES = [
+    ("constitution.json", "constitution"),
+    ("bns.json", "bns"),
+    ("bnss.json", "bnss"),
+    ("crpc.json", "crpc"),
+    ("cpc.json", "cpc"),
+    ("ida.json", "ida"),
+    ("mva.json", "mva"),
+    ("iea.json", "iea"),
+    ("nia.json", "nia"),
+]
 
 
 def get_semantic_chunks(text: str, chunker) -> list[str]:
@@ -29,11 +51,12 @@ def normalize_data(data, source):
                     "title": item["title"],
                     "text": item["description"]
                 })
-            elif source == "bns":
+            elif source in ("bns", "bnss"):
                 normalized.append({
-                    "type": "bns",
+                    "type": source,
                     "id": f"Section {item['section']}",
-                    "title": item["title"],
+                    # bns.json / bnss.json have no titles; avoid embedding the literal "None"
+                    "title": item["title"] or DEFAULT_TITLES[source],
                     "text": item["description"]
                 })
             elif source == "crpc":
@@ -57,6 +80,13 @@ def normalize_data(data, source):
                     "title": item["title"],
                     "text": item["description"]
                 })
+            elif source in ("iea", "nia"):
+                normalized.append({
+                    "type": source,
+                    "id": f"Section {item['section']}",
+                    "title": item["section_title"],
+                    "text": item["section_desc"]
+                })
             elif source == "mva":
                 normalized.append({
                     "type": "mva",
@@ -70,26 +100,38 @@ def normalize_data(data, source):
 
 
 if __name__ == "__main__":
-    client.recreate_collection(
-        collection_name=COLLECTION_NAME,
-        vectors_config=VectorParams(
-            size=1024,
-            distance=Distance.COSINE
+    # Usage:
+    #   python -m app.ingestion.ingest            -> wipe and rebuild the whole collection
+    #   python -m app.ingestion.ingest bnss ...   -> (re)ingest only these sources, keep the rest
+    only = sys.argv[1:]
+    unknown = set(only) - {source for _, source in FILES}
+    if unknown:
+        sys.exit(f"Unknown source(s): {', '.join(sorted(unknown))}")
+
+    if only and client.collection_exists(COLLECTION_NAME):
+        for source in only:
+            client.delete(
+                collection_name=COLLECTION_NAME,
+                points_selector=Filter(must=[
+                    FieldCondition(key="type", match=MatchValue(value=source))
+                ]),
+            )
+        print(f"Removed existing points for: {', '.join(only)}")
+    else:
+        if client.collection_exists(COLLECTION_NAME):
+            client.delete_collection(COLLECTION_NAME)
+        client.create_collection(
+            collection_name=COLLECTION_NAME,
+            vectors_config=VectorParams(
+                size=1024,
+                distance=Distance.COSINE
+            )
         )
-    )
-    print("Collection reset complete")
-   
+        print("Collection reset complete")
 
     all_data = []
 
-    files = [
-        ("constitution.json", "constitution"),
-        ("bns.json", "bns"),
-        ("crpc.json", "crpc"),
-        ("cpc.json", "cpc"),
-        ("ida.json", "ida"),
-        ("mva.json", "mva"),
-    ]
+    files = [(f, s) for f, s in FILES if not only or s in only]
 
     for file_name, source in files:
         try:
@@ -142,18 +184,26 @@ if __name__ == "__main__":
        vectors.extend(embedder.encode(batch))
        print(f"Embedded {min(i + 64, len(texts))}/{len(texts)} chunks...")
 
+    # Deterministic per-source ids, so a partial re-ingest never collides with other sources
+    seen = {}
+    point_ids = []
+    for item in processed_data:
+        n = seen.get(item["type"], 0)
+        seen[item["type"]] = n + 1
+        point_ids.append(str(uuid.uuid5(uuid.NAMESPACE_URL, f"{item['type']}:{n}")))
+
     points = [
-        {
-            "id": i,
-            "vector": vector,
-            "payload": {
+        PointStruct(
+            id=point_id,
+            vector=vector.tolist(),
+            payload={
                 "type": item["type"],
                 "id": item["id"],
                 "title": item["title"],
                 "text": item["text"]
             }
-        }
-        for i, (item, vector) in enumerate(zip(processed_data, vectors))
+        )
+        for point_id, item, vector in zip(point_ids, processed_data, vectors)
     ]
 
     print("Uploading to Qdrant...")
