@@ -78,14 +78,23 @@ The system uses a curated collection of Indian legal documents to support legal 
 
 The knowledge base includes:
 
-- Constitution of India
-- Bharatiya Nyaya Sanhita (BNS)
-- Code of Criminal Procedure (CrPC)
-- Code of Civil Procedure (CPC)
-- Indian Divorce Act
-- Motor Vehicles Act
-- Indian Evidence Act
-- Negotiable Instruments Act
+Constitution of India
+
+Bharatiya Nyaya Sanhita (BNS)
+
+Bharatiya Nagarik Suraksha Sanhita (BNSS)
+
+Code of Criminal Procedure (CrPC)
+
+Code of Civil Procedure (CPC)
+
+Indian Divorce Act
+
+Motor Vehicles Act
+
+Indian Evidence Act
+
+Negotiable Instruments Act
 
 **Note:** The current ingestion configuration excludes `data/hma.json` because the source file contains malformed JSON resulting from CSV conversion.
 
