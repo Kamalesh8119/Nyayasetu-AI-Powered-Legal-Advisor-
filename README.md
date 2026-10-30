@@ -1,85 +1,78 @@
-# ⚖️ NyayaSetu – AI-Powered Legal Advisor
+# NyayaSetu – AI-Powered Legal Advisor
 
-**An intelligent Legal Document Summarization and Question-Answering System using Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG).**
+**An AI-powered legal document summarization and question-answering system using Large Language Models (LLMs) and Retrieval-Augmented Generation (RAG).**
 
-NyayaSetu is an AI-powered legal assistance platform designed to help users understand Indian laws through natural language conversations. It uses Retrieval-Augmented Generation (RAG) to retrieve relevant legal provisions from a curated knowledge base of Indian legislation and generate context-aware responses using Large Language Models (LLMs).
+NyayaSetu is an intelligent legal assistance platform designed to make Indian legal information more accessible through natural language conversations. It leverages Retrieval-Augmented Generation (RAG) to retrieve relevant legal provisions from a curated knowledge base of Indian legislation and generate context-aware responses using Large Language Models (LLMs).
 
-The system combines semantic search, agent-based reasoning, response caching, and persistent conversation history to provide an efficient and user-friendly legal information assistant.
+The system integrates semantic search, agent-based orchestration, response caching, and persistent conversation storage to deliver an efficient and interactive legal information experience.
 
-> **Disclaimer:** NyayaSetu is an informational legal assistance tool and does not replace professional legal advice from a qualified advocate.
+> **Disclaimer:** NyayaSetu is intended for educational and informational purposes only. It does not replace professional legal advice from a qualified advocate.
 
----
-
-## 🚀 Key Features
+## Key Features
 
 - **Legal Question Answering:** Ask questions about Indian laws using natural language.
-- **Retrieval-Augmented Generation (RAG):** Retrieves relevant legal provisions before generating responses.
-- **Multi-LLM Support:** Supports Groq and Mistral as configurable LLM providers.
-- **Semantic Search:** Uses vector embeddings and Qdrant for retrieving relevant legal information.
-- **Agent-Based Architecture:** Uses LangGraph to orchestrate the legal question-answering workflow.
-- **Response Caching:** Redis caches answers to reduce repeated LLM calls and improve response time.
-- **Conversation History:** PostgreSQL stores chat history for persistent conversations.
-- **Interactive Interface:** Streamlit provides an accessible conversational interface.
+- **Retrieval-Augmented Generation:** Retrieves relevant legal provisions to provide contextually grounded responses.
+- **Multi-LLM Support:** Configurable LLM providers with support for Groq and Mistral.
+- **Semantic Search:** Uses vector embeddings and Qdrant for retrieving relevant legal documents.
+- **Agent-Based Orchestration:** Uses LangGraph to coordinate query processing, retrieval, and response generation.
+- **Response Caching:** Redis caches eligible responses to reduce repeated LLM calls and improve response times.
+- **Conversation History:** PostgreSQL provides persistent storage for chat history.
+- **Interactive Interface:** Streamlit provides a conversational interface for interacting with the legal assistant.
 
-## 🏗️ System Architecture
+## System Architecture
 
-NyayaSetu follows a modular architecture consisting of a frontend, backend API, agent orchestration layer, vector database, caching layer, and persistent storage.
+NyayaSetu follows a modular architecture consisting of a frontend, backend API, agent orchestration layer, vector database, caching system, and persistent storage.
 
 ```text
-                 ┌─────────────────────────┐
-                 │       USER              │
-                 │  Legal Question / Query │
-                 └────────────┬────────────┘
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │     STREAMLIT UI        │
-                 │   Frontend :8501        │
-                 └────────────┬────────────┘
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │      FASTAPI            │
-                 │   Backend :8001         │
-                 └────────────┬────────────┘
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │    LANGGRAPH AGENT      │
-                 │ Query Processing        │
-                 │ Retrieval & Generation  │
-                 └────────────┬────────────┘
-                              │
-                  ┌───────────┼────────────┐
-                  │           │            │
-                  ▼           ▼            ▼
-             ┌────────┐  ┌─────────┐  ┌──────────┐
-             │ Qdrant │  │  Redis  │  │ LLM API  │
-             │ Vector │  │  Cache  │  │ Groq /   │
-             │ Search │  │         │  │ Mistral  │
-             └────────┘  └─────────┘  └──────────┘
-                              │
-                              ▼
-                 ┌─────────────────────────┐
-                 │      PostgreSQL         │
-                 │   Chat History Storage  │
-                 └─────────────────────────┘
+                  USER
+                   |
+                   v
+          +--------------------+
+          |    Streamlit UI    |
+          |    Frontend        |
+          |      :8501         |
+          +--------------------+
+                   |
+                   v
+          +--------------------+
+          |      FastAPI       |
+          |      Backend       |
+          |      :8001         |
+          +--------------------+
+                   |
+                   v
+          +--------------------+
+          |   LangGraph Agent  |
+          | Query Processing   |
+          | Retrieval & RAG    |
+          +--------------------+
+                   |
+          +--------+---------+
+          |        |         |
+          v        v         v
+       Qdrant    Redis    LLM API
+       Vector    Cache    Groq /
+       Search             Mistral
+          |
+          v
+       PostgreSQL
+       Chat History
 ```
 
 ### Architecture Components
 
 | Component | Technology | Responsibility |
 |---|---|---|
-| Frontend | Streamlit | Interactive chatbot interface |
-| Backend | FastAPI | API endpoints and request handling |
-| Agent Framework | LangGraph | Orchestrates retrieval and response generation |
-| LLM | Groq / Mistral | Generates natural language responses |
-| Vector Database | Qdrant | Stores embeddings and retrieves legal documents |
+| Frontend | Streamlit | Provides the interactive chatbot interface |
+| Backend | FastAPI | Handles API requests and application logic |
+| Agent Framework | LangGraph | Orchestrates the question-answering workflow |
+| LLM Providers | Groq / Mistral | Generates natural language responses |
+| Vector Database | Qdrant | Stores embeddings and retrieves relevant legal documents |
 | Embedding Model | Configured embedding model | Converts legal text into vector representations |
-| Cache | Redis | Caches previously generated answers |
-| Database | PostgreSQL | Stores conversation history |
+| Cache | Redis | Stores eligible responses for faster retrieval |
+| Database | PostgreSQL | Maintains persistent conversation history |
 
-## 📚 Legal Knowledge Base
+## Legal Knowledge Base
 
 The system uses a curated collection of Indian legal documents to support legal information retrieval.
 
@@ -94,23 +87,25 @@ The knowledge base includes:
 - Indian Evidence Act
 - Negotiable Instruments Act
 
-**Note:** The repository's current ingestion configuration excludes `data/hma.json` because the source file is malformed. Also, older legislation such as the IPC, CrPC and Indian Evidence Act has undergone legislative changes or replacement. The knowledge base should be updated and versioned to distinguish historical legislation from currently applicable laws.
+**Note:** The current ingestion configuration excludes `data/hma.json` because the source file contains malformed JSON resulting from CSV conversion.
 
-## 🔄 RAG Workflow
+The knowledge base should also distinguish historical legislation from currently applicable legislation, particularly following the introduction of the Bharatiya Nyaya Sanhita (BNS), Bharatiya Nagarik Suraksha Sanhita (BNSS), and Bharatiya Sakshya Adhiniyam (BSA).
 
-The application follows a Retrieval-Augmented Generation pipeline:
+## Retrieval-Augmented Generation Workflow
+
+NyayaSetu uses a RAG pipeline to generate responses grounded in retrieved legal information.
 
 1. **User Query:** The user submits a legal question through the Streamlit interface.
-2. **API Request:** FastAPI receives the question and forwards it to the agent.
-3. **Query Processing:** LangGraph orchestrates the question-answering workflow.
-4. **Semantic Retrieval:** The query is converted into an embedding and relevant legal documents are retrieved from Qdrant.
+2. **API Request:** FastAPI receives the query and forwards it to the application workflow.
+3. **Query Processing:** LangGraph orchestrates the question-answering process.
+4. **Semantic Retrieval:** The query is converted into an embedding, and relevant legal documents are retrieved from Qdrant.
 5. **Context Preparation:** Retrieved legal provisions are assembled into contextual information.
-6. **Response Generation:** The selected LLM (Groq or Mistral) generates an answer using the retrieved context.
-7. **Caching:** Redis stores eligible responses for subsequent queries.
-8. **Conversation Storage:** PostgreSQL persists chat history.
-9. **Response Delivery:** The generated answer is returned to the Streamlit interface.
+6. **Response Generation:** The selected LLM provider (Groq or Mistral) generates a response using the retrieved context.
+7. **Response Caching:** Redis caches eligible responses to improve performance for repeated queries.
+8. **Conversation Persistence:** PostgreSQL stores conversation history.
+9. **Response Delivery:** The generated response is returned to the Streamlit interface.
 
-## 🛠️ Technology Stack
+## Technology Stack
 
 | Category | Technologies |
 |---|---|
@@ -120,14 +115,12 @@ The application follows a Retrieval-Augmented Generation pipeline:
 | Agent Orchestration | LangGraph |
 | LLM Providers | Groq, Mistral |
 | Vector Database | Qdrant |
-| Cache | Redis |
+| Caching | Redis |
 | Relational Database | PostgreSQL |
 | Embeddings | Configured text embedding model |
-| Deployment | Docker, Docker Compose |
+| Containerization | Docker, Docker Compose |
 
----
-
-## 📂 Project Structure
+## Project Structure
 
 ```text
 NyayaSetu/
@@ -158,20 +151,18 @@ NyayaSetu/
 └── README.md
 ```
 
-*The structure above illustrates the main project components. Adjust filenames and directories to match the actual repository.*
+*The structure above illustrates the main project components. Refer to the repository for the complete directory structure.*
 
----
-
-## ⚙️ Installation and Setup
+## Installation and Setup
 
 ### Prerequisites
 
 Ensure the following are installed:
 
-- Python 3.11+
+- Python 3.11 or later
 - Git
 - Bash
-- Required service binaries or access to the local service setup
+- Required local service binaries or access to the local service setup
 - Internet connection for LLM API access
 
 ### 1. Clone the Repository
@@ -183,13 +174,13 @@ cd NyayaSetu
 
 ### 2. Configure Environment Variables
 
-Create your environment configuration file:
+Create the environment configuration file:
 
 ```bash
 cp .env.example .env
 ```
 
-Open `.env` and configure your API credentials.
+Configure your preferred LLM provider and API credentials in `.env`.
 
 **Option A: Groq (Default)**
 
@@ -198,7 +189,7 @@ LLM_PROVIDER=groq
 GROQ_API_KEY=your_groq_api_key
 ```
 
-Get your API key:
+Generate an API key:
 
 https://console.groq.com/keys
 
@@ -209,7 +200,7 @@ LLM_PROVIDER=mistral
 MISTRAL_API_KEY=your_mistral_api_key
 ```
 
-Get your API key:
+Generate an API key:
 
 https://console.mistral.ai/
 
@@ -219,11 +210,13 @@ You can optionally override the configured model:
 LLM_MODEL=your_model_name
 ```
 
-Use the model identifier supported by your selected provider.
+Use a model identifier supported by your selected provider.
 
 ### 3. Start the Application
 
-Start the complete local environment without Docker:
+NyayaSetu supports local execution without requiring Docker.
+
+Start all services using:
 
 ```bash
 ./start.sh
@@ -231,7 +224,7 @@ Start the complete local environment without Docker:
 
 The startup script launches the following services:
 
-| Service | Local Port |
+| Service | Port |
 |---|---:|
 | Streamlit UI | 8501 |
 | FastAPI Backend | 8001 |
@@ -243,19 +236,21 @@ The startup script launches the following services:
 
 Open the following URL in your browser:
 
+```text
 http://localhost:8501
+```
 
-The NyayaSetu legal advisor interface should now be accessible.
+The NyayaSetu legal advisor interface will be available locally.
 
 ### 5. Stop the Application
 
-Stop the frontend and backend:
+To stop the frontend and backend services:
 
 ```bash
 ./stop.sh
 ```
 
-Stop the application and all associated databases:
+To stop the application along with its associated databases:
 
 ```bash
 ./stop.sh --all
@@ -267,118 +262,96 @@ Local service binaries, database data, and logs are maintained under:
 ~/.local/lexai-services/
 ```
 
----
+## Legal Document Ingestion
 
-## 📥 Legal Document Ingestion
-
-NyayaSetu uses a one-time ingestion process to convert legal documents into vector embeddings and store them in Qdrant.
+NyayaSetu includes a document ingestion pipeline that processes legal documents, generates vector embeddings, and stores them in Qdrant.
 
 ### Full Ingestion
 
-Run the following command:
+Execute the following command:
 
 ```bash
 .venv/bin/python -m app.ingestion.ingest
 ```
 
-This process:
+The ingestion process:
 
-1. Reads the legal document JSON files from `data/`.
-2. Processes the legal text.
-3. Generates embeddings.
-4. Stores the resulting vectors in Qdrant.
+1. Reads legal document JSON files from the `data/` directory.
+2. Processes and prepares the legal text.
+3. Generates vector embeddings.
+4. Stores the embeddings and associated document information in Qdrant.
 5. Rebuilds the configured vector collection.
 
-**Important:** A full ingestion wipes and rebuilds the existing collection. On CPU, the operation can take approximately three hours.
+**Important:** Full ingestion wipes and rebuilds the existing collection. On CPU, the process takes approximately three hours.
 
-Do not execute full ingestion unnecessarily.
+Only perform full ingestion when the source documents or embedding model have changed.
 
 ### Selective Ingestion
 
-To ingest or refresh a specific legal act without rebuilding the entire collection, provide its source name:
+To ingest or refresh a specific legal act without performing a full collection rebuild, pass its source identifier:
 
 ```bash
 .venv/bin/python -m app.ingestion.ingest bnss
 ```
 
-Use the appropriate source identifiers supported by the ingestion script.
+Use the source identifiers supported by the ingestion script.
 
-**Note:** `data/hma.json` is currently excluded because its CSV conversion produced malformed JSON.
+**Note:** `data/hma.json` is currently excluded because its JSON structure is malformed following CSV conversion.
 
----
-
-## 🧪 Evaluation
+## Evaluation
 
 NyayaSetu includes an evaluation script to assess the application's question-answering functionality.
 
-First, ensure the backend is running.
-
-Execute:
+Ensure the backend is running before executing:
 
 ```bash
 .venv/bin/python evaluation.py
 ```
 
-The evaluation script requires the running backend to process its test queries.
+The evaluation script communicates with the running backend to process its test queries.
 
----
+## Docker Deployment
 
-## 🐳 Docker Deployment
+NyayaSetu also supports containerized deployment using Docker Compose.
 
-NyayaSetu also supports Docker Compose deployment.
+Ensure Docker and the Docker Compose plugin are installed and accessible to your user.
 
-Ensure Docker and the Docker Compose plugin are installed and that your user has permission to access Docker.
-
-Build and start the services:
+Build and start the application:
 
 ```bash
 docker compose up --build
 ```
 
-Run the initial legal document ingestion inside the backend container once after the services are ready.
+After the services are ready, perform the initial legal document ingestion inside the backend container.
 
----
-
-## 🔐 Security Considerations
+## Security Considerations
 
 - Store API keys and credentials in environment variables.
-- Never commit `.env` files or API secrets to GitHub.
-- Avoid exposing database ports publicly.
+- Never commit `.env` files or sensitive credentials to version control.
+- Avoid exposing database ports to public networks.
 - Validate and sanitize incoming user queries.
-- Apply appropriate authentication and authorization before exposing the application publicly.
-- Implement user-level isolation for conversation history.
-- Avoid caching sensitive user-specific legal queries without appropriate cache-key isolation.
-- Do not treat LLM-generated responses as verified legal advice.
+- Implement authentication and authorization before public deployment.
+- Maintain user-level isolation for conversation history.
+- Apply appropriate cache-key isolation when caching user-specific queries.
+- Treat LLM-generated responses as informational rather than verified legal advice.
 
----
-
-## 🚧 Future Improvements
+## Future Enhancements
 
 - PDF upload and legal document summarization.
-- Support for additional Indian legislation and amendments.
-- Source citations with section and provision references.
-- Improved retrieval through hybrid search and reranking.
+- Expanded coverage of Indian legislation and amendments.
+- Legal source citations with section and provision references.
+- Hybrid retrieval and reranking for improved search relevance.
 - Multilingual legal question answering.
-- User authentication and isolated chat sessions.
+- User authentication and isolated conversation sessions.
 - Enhanced evaluation using retrieval precision, recall, and answer faithfulness.
-- Production deployment with monitoring and logging.
+- Production deployment with monitoring and centralized logging.
 
----
+## Project Objective
 
-## 🎯 Project Objective
+The objective of NyayaSetu is to simplify access to Indian legal information through conversational AI.
 
-The primary objective of NyayaSetu is to make Indian legal information more accessible through conversational AI.
+By combining Retrieval-Augmented Generation, semantic search, agent-based orchestration, and persistent conversation management, the platform aims to help users understand complex legal documents and access relevant legal information through a natural language interface.
 
-By combining Retrieval-Augmented Generation, vector search, LLM-based reasoning, and persistent conversation management, the platform aims to simplify access to complex legal information and help users understand relevant legal provisions.
+## Disclaimer
 
----
-
-## 👨‍💻 Author
-
-**NyayaSetu – Legal Document Summarization and Question-Answering System**
-
-Built using Python, FastAPI, Streamlit, LangGraph, Qdrant, Redis, PostgreSQL, and LLM APIs.
-
----
-
-**Disclaimer:** This project is developed for educational and informational purposes. It does not constitute legal advice, and users should consult qualified legal professionals for specific legal matters.
+NyayaSetu is an educational and informational project. It does not provide professional legal advice, establish an advocate-client relationship, or replace consultation with a qualified legal professional.
